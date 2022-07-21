@@ -2,8 +2,11 @@ const express = require("express")
 const route = require("./routes/route")
 const app = express()
 const mongoose = require("mongoose")
+const cors = require('cors')
 
 app.use(express.json())
+
+app.use(cors()) 
 
 
 mongoose.connect("mongodb+srv://Pragesh_Yadav:Mongoblog22@cluster0.ebq4hak.mongodb.net/urlShortnerGroup41",

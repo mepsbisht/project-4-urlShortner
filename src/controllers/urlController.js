@@ -27,6 +27,8 @@ redisClient.on("connect", async function () {
 const SET_ASYNC = promisify(redisClient.SET).bind(redisClient);
 const GET_ASYNC = promisify(redisClient.GET).bind(redisClient);
 
+// ========================================================CREATING SHORT URL=========================================================
+
 let createshortUrl = async function (req, res) {
   try {
     let { longUrl } = req.body;
@@ -46,8 +48,30 @@ let createshortUrl = async function (req, res) {
         .status(400)
         .send({ status: false, message: "Please provide a valid URL" });
     }
-    
 
+   
+    let cachedUrl = await GET_ASYNC(`${longUrl}`);
+    if (cachedUrl) {
+      cachedUrl = JSON.parse(cachedUrl);
+      return res.status(409).send({
+        status: true,
+        message: `${longUrl} this url has already been shortened`,
+        data: cachedUrl,
+      });
+    } else {
+      const urlExists = await urlModel
+        .findOne({ longUrl: longUrl })
+        .select({ longUrl: 1, shortUrl: 1, urlCode: 1, _id: 0 });
+
+      if (urlExists) {
+        return res.status(409).send({
+          status: true,
+          message: `${longUrl.trim()}, This URL has already been shortened`,
+          data: urlExists,
+        });
+      }
+    }
+    
     let urlFound = false;
 
     let object = {
@@ -64,29 +88,6 @@ let createshortUrl = async function (req, res) {
       return res.status(400).send({ status: false, message: "Invalid URL" });
     }
 
-    let catchedUrl = await GET_ASYNC(`${longUrl}`);
-    if (catchedUrl) {
-      catchedUrl = JSON.parse(catchedUrl)
-      return res.status(409).send({
-        status: true,
-        message: `${longUrl} this url has already been shortened`,
-        data: catchedUrl,
-      });
-    }else {
-
-      const urlExists = await urlModel
-      .findOne({ longUrl: longUrl })
-      .select({ longUrl: 1, shortUrl: 1, urlCode: 1, _id: 0 });
-
-    if (urlExists) {
-      return res.status(409).send({
-        status: true,
-        message: `${longUrl.trim()}, This URL has already been shortened`,
-        data: urlExists,
-      });
-    }
-
-    }
 
     const baseUrl = "localhost:3000";
     const urlCode = shortId.generate();
@@ -105,29 +106,34 @@ let createshortUrl = async function (req, res) {
   }
 };
 
+// ===================================================REDIRECTING TO LONG URL BY SHORT URL==================================================
+
 const getUrl = async function (req, res) {
   try {
     const { urlCode } = req.params;
-    let catchedUrl = await GET_ASYNC(`${urlCode}`);
-    if (catchedUrl) {
-      catchedUrl = JSON.parse(catchedUrl);
-      longUrl = catchedUrl.longUrl;
+    let cachedUrl = await GET_ASYNC(`${urlCode}`);
+    if (cachedUrl) {
+      cachedUrl = JSON.parse(cachedUrl);
+      longUrl = cachedUrl.longUrl;
       res.status(302).redirect(longUrl);
     } else {
-      let getCatchedUrl = await urlModel
+      let getcachedUrl = await urlModel
         .findOne({ urlCode: urlCode })
         .select({ longUrl: 1, shortUrl: 1, urlCode: 1, _id: 0 });
-      if (!getCatchedUrl) {
+      if (!getcachedUrl) {
         return res
           .status(404)
           .send({ status: false, message: "Data not found" });
       }
-      await SET_ASYNC(`${urlCode}`, JSON.stringify(getCatchedUrl));
-      await SET_ASYNC(
-        `${getCatchedUrl.longUrl}`,
-        JSON.stringify(getCatchedUrl)
-      );
-      res.status(302).redirect(getCatchedUrl.longUrl);
+
+      //SETTING THE DATA AS A KEY URLCODE PASSED BY USER WITH THE VALUE OF ITS DATA
+
+      await SET_ASYNC(`${urlCode}`, JSON.stringify(getcachedUrl));
+
+      //SETTING THE DATA AS A KEY  LONGURL WITH THE VALUE OF ITS DATA
+
+      await SET_ASYNC(`${getcachedUrl.longUrl}`, JSON.stringify(getcachedUrl));
+      res.status(302).redirect(getcachedUrl.longUrl);
     }
   } catch (err) {
     return res.status(500).send({ status: false, message: err.message });
